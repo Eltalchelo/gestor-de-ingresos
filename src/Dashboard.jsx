@@ -561,6 +561,10 @@ export default function Dashboard() {
   });
   const [dragOver, setDragOver] = useState(null);
   const [showFiltros, setShowFiltros] = useState(false);
+  const [editingDateTxId, setEditingDateTxId] = useState(null);
+  const [editingDateVal, setEditingDateVal] = useState("");
+  const [lineChartCat, setLineChartCat] = useState("todas");
+  const [showEditModal, setShowEditModal] = useState(false);
 
   // ── FILTROS PERSISTENTES ─────────────────────────────────────
   useEffect(() => {
@@ -609,10 +613,12 @@ export default function Dashboard() {
   const balancePeriodo = ingresosPeriodo - gastosPeriodoAll;
   const disponiblePres = Math.max(presupuesto.total - gastosPeriodo, 0);
 
-  const gastosFijosConEstado = useMemo(() => gastosFijos.map(gf => ({
-    ...gf,
-    pagado: transacciones.some(t => t.tipo === "gasto" && t.categoria === gf.categoria && t.fecha >= presupuesto.fechaInicio && t.fecha <= presupuesto.fechaFin)
-  })), [gastosFijos, transacciones, presupuesto]);
+  const gastosFijosConEstado = useMemo(() => gastosFijos.map(gf => {
+    const gastoEnCat = transacciones
+      .filter(t => t.tipo === "gasto" && t.categoria === gf.categoria && t.fecha >= presupuesto.fechaInicio && t.fecha <= presupuesto.fechaFin)
+      .reduce((s, t) => s + t.monto, 0);
+    return { ...gf, pagado: gastoEnCat >= gf.monto, gastoEnCat };
+  }), [gastosFijos, transacciones, presupuesto]);
   const disponibleReal = useMemo(() => {
     const pendienteMonto = gastosFijosConEstado.filter(g => !g.pagado).reduce((s, g) => s + g.monto, 0);
     return Math.max(disponiblePres - pendienteMonto, 0);
@@ -634,13 +640,14 @@ export default function Dashboard() {
     }
     transacciones.forEach(t => {
       if (t.fecha >= presupuesto.fechaInicio && t.fecha <= presupuesto.fechaFin) {
+        if (lineChartCat !== "todas" && t.categoria !== lineChartCat) return;
         if (!map[t.fecha]) map[t.fecha] = { dia: t.fecha.slice(5), ingresos: 0, gastos: 0 };
         if (t.tipo === "ingreso") map[t.fecha].ingresos += t.monto;
         else if (t.categoria !== "Transferencia") map[t.fecha].gastos += t.monto;
       }
     });
     return Object.values(map).sort((a, b) => a.dia.localeCompare(b.dia));
-  }, [transacciones, presupuesto]);
+  }, [transacciones, presupuesto, lineChartCat]);
 
   // Transacciones filtradas
   const cuentasEnTransacciones = useMemo(() => [...new Set(transacciones.map(t => t.cuenta))], [transacciones]);
@@ -770,8 +777,19 @@ export default function Dashboard() {
         setCuentas(prev => prev.map(c => c.id === cuentaObj.id ? { ...c, saldo: nuevoSaldo } : c));
       }
 
-      setForm({ ...form, descripcion: "", monto: "" });
+      setForm({ tipo: form.tipo, categoria: form.tipo === "ingreso" ? (catsIngreso[0] || "Salario") : (catsGasto[0] || "Comida"), descripcion: "", monto: "", fecha: localDate(), cuenta: form.cuenta, impacta_presupuesto: true });
       setShowForm(false); saved();
+    } catch(e) { errAt(e); }
+  };
+
+  const handleSaveEditModal = async () => {
+    if (!editingTxId) return;
+    saving("Guardando cambios…");
+    try {
+      const fields = { descripcion: editingTxData.descripcion, categoria: editingTxData.categoria, monto: parseFloat(editingTxData.monto) || 0, fecha: editingTxData.fecha, cuenta: editingTxData.cuenta, impacta_presupuesto: editingTxData.impacta_presupuesto };
+      await atUpdate("Transacciones", editingTxId, fields);
+      setTransacciones(prev => prev.map(t => t.id !== editingTxId ? t : { ...t, ...fields }));
+      setEditingTxId(null); setShowEditModal(false); saved();
     } catch(e) { errAt(e); }
   };
 
@@ -1118,12 +1136,18 @@ export default function Dashboard() {
         @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         @keyframes shake { 0%,100% { transform: translateX(0); } 20%,60% { transform: translateX(-5px); } 40%,80% { transform: translateX(5px); } }
+        @keyframes slideUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
         .sync-error { animation: shake 0.4s ease; }
-        .fade { animation: fadeIn 0.25s ease; }
+        .fade { animation: fadeIn 0.22s ease; }
+        .slide-up { animation: slideUp 0.28s cubic-bezier(0.34,1.2,0.64,1); }
         .cal-cell:hover { opacity: 0.7; }
-        .filter-select { background: ${C.bg}; border: 1.5px solid ${C.border}; border-radius: 10px; color: ${C.text}; font-family: 'Urbanist', sans-serif; font-size: 13px; font-weight: 600; padding: 7px 12px; outline: none; cursor: pointer; }
+        .filter-select { background: ${C.bg}; border: 1.5px solid ${C.border}; border-radius: 10px; color: ${C.text}; font-family: 'Urbanist', sans-serif; font-size: 13px; font-weight: 600; padding: 7px 12px; outline: none; cursor: pointer; transition: border-color 0.2s; }
         .filter-select:focus { border-color: ${C.sage}; }
         .chip { display: inline-flex; align-items: center; gap: 4px; padding: "2px 10px"; border-radius: 20px; font-size: 11px; font-weight: 700; }
+        .nav-tab { transition: color 0.18s, border-bottom-color 0.18s; }
+        .row-hover { transition: background 0.12s; }
+        button { transition: opacity 0.15s, transform 0.12s; }
+        button:active { opacity: 0.75; transform: scale(0.97); }
       `}</style>
 
       {/* ── HEADER ── */}
@@ -1220,7 +1244,6 @@ export default function Dashboard() {
             const manana = hoy.getDate() + 1;
             const avisos = [];
             tarjetas.forEach(t => {
-              if (t.dia_corte && t.dia_corte === manana) avisos.push({ tipo: "corte", nombre: t.nombre, dia: t.dia_corte, color: C.amber, bg: "#fef9e8" });
               if (t.dia_pago && t.dia_pago === manana) avisos.push({ tipo: "pago", nombre: t.nombre, dia: t.dia_pago, color: C.rose, bg: "#fce8e8" });
             });
             if (avisos.length === 0) return null;
@@ -1313,13 +1336,19 @@ export default function Dashboard() {
                 </div>
                 <p style={{ fontSize: 11, color: C.sky, marginTop: 10 }}>{pct(gastosPeriodo, presupuesto.total).toFixed(0)}% utilizado</p>
               </div>
-              <PieChart width={120} height={120}>
-                <Pie data={[{ name: "Gastado", value: gastosPeriodo || 0.01 }, { name: "Disponible", value: Math.max(disponiblePres, 0.01) }]} cx={56} cy={56} innerRadius={35} outerRadius={54} paddingAngle={0} dataKey="value" startAngle={90} endAngle={-270}>
-                  <Cell fill="#e0e0e0" />
-                  <Cell fill="#7aab8a" />
-                </Pie>
-                <Tooltip contentStyle={{ background: "white", border: `1px solid ${C.border}`, borderRadius: 10, fontFamily: "Urbanist", fontSize: 11 }} formatter={v => [fmt(v)]} />
-              </PieChart>
+              <div style={{ position: "relative", width: 120, height: 120, flexShrink: 0 }}>
+                <PieChart width={120} height={120}>
+                  <Pie data={[{ name: "Gastado", value: gastosPeriodo || 0.01 }, { name: "Disponible", value: Math.max(disponiblePres, 0.01) }]} cx={56} cy={56} innerRadius={35} outerRadius={54} paddingAngle={0} dataKey="value" startAngle={90} endAngle={-270}>
+                    <Cell fill="#e0e0e0" />
+                    <Cell fill="#7aab8a" />
+                  </Pie>
+                  <Tooltip contentStyle={{ background: "white", border: `1px solid ${C.border}`, borderRadius: 10, fontFamily: "Urbanist", fontSize: 11 }} formatter={v => [fmt(v)]} />
+                </PieChart>
+                <div style={{ position: "absolute", top: 56, left: 56, transform: "translate(-50%,-50%)", textAlign: "center", pointerEvents: "none" }}>
+                  <p style={{ fontSize: 14, fontWeight: 900, letterSpacing: -0.5, color: C.eerieBlack }}>{Math.max(100 - pct(gastosPeriodo, presupuesto.total), 0).toFixed(0)}%</p>
+                  <p style={{ fontSize: 8, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>libre</p>
+                </div>
+              </div>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {[
@@ -1392,16 +1421,22 @@ export default function Dashboard() {
                 </div>
               </div>
               {pieData.length === 0 ? <div style={{ height: 200, display: "flex", alignItems: "center", justifyContent: "center", color: C.muted }}>Sin datos</div> : (
-                <ResponsiveContainer width="100%" height={260}>
-                  <PieChart>
-                    <Pie data={pieData} cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={3} dataKey="value"
-                      style={{ cursor: "pointer" }}
-                      onClick={(data) => { setActiveTab(tabPie === "gasto" ? "gastos" : "ingresos"); setFiltroCategoria(data.name); }}>
-                      {pieData.map((_, i) => { const pal = tabPie === "gasto" ? PIE_PALETTE_GASTO : PIE_PALETTE_INGRESO; return <Cell key={i} fill={pal[i % pal.length]} />; })}
-                    </Pie>
-                    <Tooltip content={<CustomPieTooltip />} />
-                  </PieChart>
-                </ResponsiveContainer>
+                <div style={{ position: "relative" }}>
+                  <ResponsiveContainer width="100%" height={260}>
+                    <PieChart>
+                      <Pie data={pieData} cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={3} dataKey="value"
+                        style={{ cursor: "pointer" }}
+                        onClick={(data) => { setActiveTab(tabPie === "gasto" ? "gastos" : "ingresos"); setFiltroCategoria(data.name); }}>
+                        {pieData.map((_, i) => { const pal = tabPie === "gasto" ? PIE_PALETTE_GASTO : PIE_PALETTE_INGRESO; return <Cell key={i} fill={pal[i % pal.length]} />; })}
+                      </Pie>
+                      <Tooltip content={<CustomPieTooltip />} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", textAlign: "center", pointerEvents: "none" }}>
+                    <p style={{ fontSize: 15, fontWeight: 900, letterSpacing: -0.5, color: tabPie === "gasto" ? C.rose : C.sage }}>{fmt(pieData.reduce((s, d) => s + d.value, 0))}</p>
+                    <p style={{ fontSize: 9, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>total</p>
+                  </div>
+                </div>
               )}
             </div>
           </div>
@@ -1416,7 +1451,7 @@ export default function Dashboard() {
               {ultimasTx.length === 0 && <p style={{ padding: 24, textAlign: "center", color: C.muted, fontSize: 13 }}>Sin transacciones aún</p>}
               <div style={{ overflowY: "auto", flex: 1 }}>
               {ultimasTx.map((t, i) => (
-                <div key={t.id} className="row-hover" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "11px 20px", borderBottom: i < ultimasTx.length - 1 ? `1px solid ${C.border}` : "none" }}>
+                <div key={t.id} className="row-hover" onClick={() => { setEditingTxId(t.id); setEditingTxData({ fecha: t.fecha, categoria: t.categoria, descripcion: t.descripcion, cuenta: t.cuenta, monto: t.monto, impacta_presupuesto: t.impacta_presupuesto, tipo: t.tipo }); setShowEditModal(true); }} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "11px 20px", borderBottom: i < ultimasTx.length - 1 ? `1px solid ${C.border}` : "none", cursor: "pointer" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <div style={{ width: 34, height: 34, borderRadius: 9, background: t.tipo === "ingreso" ? C.honeydew : "#fce8e8", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15 }}>{CUENTA_ICONS[t.cuenta] || "💳"}</div>
                     <div>
@@ -1439,7 +1474,7 @@ export default function Dashboard() {
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1, overflowY: "auto" }}>
                 {cuentas.filter(c => c.saldo > 0).map(c => (
-                  <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 10px", borderRadius: 9, background: "rgba(255,255,255,0.5)" }}>
+                  <div key={c.id} onClick={() => setActiveTab("cuentas")} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 10px", borderRadius: 9, background: "rgba(255,255,255,0.5)", cursor: "pointer", transition: "opacity 0.15s" }} onMouseEnter={e=>e.currentTarget.style.opacity="0.75"} onMouseLeave={e=>e.currentTarget.style.opacity="1"}>
                     <span style={{ fontSize: 13 }}>{CUENTA_ICONS[c.nombre] || (c.tipo === "ahorro" ? "🏦" : "💳")} {c.nombre}</span>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                       <span style={{ fontSize: 13, fontWeight: 700 }}>{fmt(c.saldo)}</span>
@@ -1456,14 +1491,20 @@ export default function Dashboard() {
 
         {/* Ingresos vs Gastos por día */}
         <div style={{ ...S.card, padding: 24, margin: "0 0 0 0", borderRadius: 0, borderTop: `1px solid ${C.border}`, borderLeft: "none", borderRight: "none" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, flexWrap: "wrap", gap: 10 }}>
             <div>
               <h3 style={{ fontSize: 14, fontWeight: 800 }}>Ingresos vs Gastos por día</h3>
               <p style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{fmtFecha(presupuesto.fechaInicio)} – {fmtFecha(presupuesto.fechaFin)}</p>
             </div>
-            <div style={{ display: "flex", gap: 16 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}><div style={{ width: 12, height: 3, borderRadius: 2, background: C.sage }} /><span style={{ fontSize: 12, color: C.muted }}>Ingresos</span></div>
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}><div style={{ width: 12, height: 3, borderRadius: 2, background: C.rose }} /><span style={{ fontSize: 12, color: C.muted }}>Gastos</span></div>
+            <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+              <select value={lineChartCat} onChange={e => setLineChartCat(e.target.value)} className="filter-select" style={{ fontSize: 12, padding: "5px 10px" }}>
+                <option value="todas">Todas las categorías</option>
+                {[...new Set(transacciones.filter(t => t.fecha >= presupuesto.fechaInicio && t.fecha <= presupuesto.fechaFin).map(t => t.categoria))].sort().map(c => <option key={c}>{c}</option>)}
+              </select>
+              <div style={{ display: "flex", gap: 16 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}><div style={{ width: 12, height: 3, borderRadius: 2, background: C.sage }} /><span style={{ fontSize: 12, color: C.muted }}>Ingresos</span></div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}><div style={{ width: 12, height: 3, borderRadius: 2, background: C.rose }} /><span style={{ fontSize: 12, color: C.muted }}>Gastos</span></div>
+              </div>
             </div>
           </div>
           <ResponsiveContainer width="100%" height={250}>
@@ -1681,30 +1722,18 @@ export default function Dashboard() {
                     <th key={h} style={{ padding: "10px 16px", textAlign: "left", fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, whiteSpace: "nowrap" }}>{h}</th>
                   ))}
                 </tr>
-                <tr><td colSpan={8} style={{ padding: "4px 16px 6px", fontSize: 10, color: C.soft, fontStyle: "italic" }}>Toca cualquier fila para editar</td></tr></thead>
+                <tr><td colSpan={8} style={{ padding: "4px 16px 6px", fontSize: 10, color: C.soft, fontStyle: "italic" }}>Toca la fecha para editarla · toca la fila para editar todos los campos</td></tr></thead>
                 <tbody>
                   {txFiltradas.map(t => {
-                    const isEditing = editingTxId === t.id;
-                    const cats = t.tipo === "ingreso" ? catsIngreso : catsGasto;
-                    if (isEditing) return (
-                      <tr key={t.id} style={{ borderBottom: `1px solid ${C.border}`, background: "#f0f7ff" }}>
-                        <td style={{ padding: "8px 10px" }}><input type="date" value={editingTxData.fecha} onChange={e => setEditingTxData(d => ({ ...d, fecha: e.target.value }))} style={{ fontSize: 12, padding: "4px 6px", width: 130 }} /></td>
-                        <td style={{ padding: "8px 10px" }}><span style={{ background: t.tipo === "ingreso" ? C.honeydew : "#fce8e8", color: t.tipo === "ingreso" ? C.sage : C.rose, borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>{t.tipo === "ingreso" ? "Ingreso" : "Gasto"}</span></td>
-                        <td style={{ padding: "8px 10px" }}><select value={editingTxData.categoria} onChange={e => setEditingTxData(d => ({ ...d, categoria: e.target.value }))} style={{ fontSize: 12, padding: "4px 6px" }}>{cats.map(c => <option key={c}>{c}</option>)}</select></td>
-                        <td style={{ padding: "8px 10px" }}><input value={editingTxData.descripcion} onChange={e => setEditingTxData(d => ({ ...d, descripcion: e.target.value }))} style={{ fontSize: 12, padding: "4px 6px", width: 160 }} /></td>
-                        <td style={{ padding: "8px 10px" }}><select value={editingTxData.cuenta} onChange={e => setEditingTxData(d => ({ ...d, cuenta: e.target.value }))} style={{ fontSize: 12, padding: "4px 6px" }}>{[...cuentas.map(c => c.nombre), ...CUENTAS_LIST].filter((v,i,a)=>a.indexOf(v)===i).map(c => <option key={c}>{c}</option>)}</select></td>
-                        <td style={{ padding: "8px 10px" }}><input type="number" value={editingTxData.monto} onChange={e => setEditingTxData(d => ({ ...d, monto: e.target.value }))} style={{ fontSize: 12, padding: "4px 6px", width: 90 }} /></td>
-                        <td style={{ padding: "8px 10px" }}><button onClick={() => setEditingTxData(d => ({ ...d, impacta_presupuesto: !d.impacta_presupuesto }))} style={{ background: editingTxData.impacta_presupuesto ? C.honeydew : C.bg, border: `1px solid ${editingTxData.impacta_presupuesto ? "#a0c8a8" : C.border}`, borderRadius: 6, padding: "2px 7px", fontSize: 10, fontWeight: 700, cursor: "pointer", color: editingTxData.impacta_presupuesto ? C.sage : C.muted }}>{editingTxData.impacta_presupuesto ? "✓" : "—"}</button></td>
-                        <td style={{ padding: "8px 10px", display: "flex", gap: 4 }}>
-                          <button onClick={handleSaveTxEdit} className="icon-btn" style={{ color: C.sage }}><Check size={14}/></button>
-                          <button onClick={() => setEditingTxId(null)} className="icon-btn"><X size={14}/></button>
-                        </td>
-                      </tr>
-                    );
-                    const startEditTx = () => { setEditingTxId(t.id); setEditingTxData({ fecha: t.fecha, categoria: t.categoria, descripcion: t.descripcion, cuenta: t.cuenta, monto: t.monto, impacta_presupuesto: t.impacta_presupuesto }); };
+                    const openEdit = () => { setEditingTxId(t.id); setEditingTxData({ fecha: t.fecha, categoria: t.categoria, descripcion: t.descripcion, cuenta: t.cuenta, monto: t.monto, impacta_presupuesto: t.impacta_presupuesto, tipo: t.tipo }); setShowEditModal(true); };
                     return (
-                      <tr key={t.id} className="row-hover" style={{ borderBottom: `1px solid ${C.border}`, cursor: "pointer" }} onClick={startEditTx}>
-                        <td style={{ padding: "12px 16px", fontSize: 13, color: C.muted, whiteSpace: "nowrap" }}>{new Date(t.fecha + "T12:00:00").toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "2-digit" })}</td>
+                      <tr key={t.id} className="row-hover" style={{ borderBottom: `1px solid ${C.border}`, cursor: "pointer" }} onClick={openEdit}>
+                        <td style={{ padding: "12px 16px", fontSize: 13, color: C.muted, whiteSpace: "nowrap" }} onClick={e => { e.stopPropagation(); setEditingDateTxId(t.id); setEditingDateVal(t.fecha); }}>
+                          {editingDateTxId === t.id
+                            ? <input type="date" value={editingDateVal} onChange={e => setEditingDateVal(e.target.value)} autoFocus onClick={e => e.stopPropagation()} onBlur={async () => { if (editingDateVal && editingDateVal !== t.fecha) { saving("Guardando fecha…"); try { await atUpdate("Transacciones", t.id, { fecha: editingDateVal }); setTransacciones(prev => prev.map(tx => tx.id !== t.id ? tx : { ...tx, fecha: editingDateVal })); saved(); } catch(ex) { errAt(ex); } } setEditingDateTxId(null); }} style={{ fontSize: 12, padding: "3px 6px", width: 128 }} />
+                            : <span style={{ borderBottom: `1px dashed ${C.border}`, paddingBottom: 1, cursor: "text" }}>{new Date(t.fecha + "T12:00:00").toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "2-digit" })}</span>
+                          }
+                        </td>
                         <td style={{ padding: "12px 16px" }}><span style={{ background: t.tipo === "ingreso" ? C.honeydew : "#fce8e8", color: t.tipo === "ingreso" ? C.sage : C.rose, borderRadius: 6, padding: "2px 10px", fontSize: 11, fontWeight: 700 }}>{t.tipo === "ingreso" ? "Ingreso" : "Gasto"}</span></td>
                         <td style={{ padding: "12px 16px", fontSize: 13, fontWeight: 600 }}>{t.categoria}</td>
                         <td style={{ padding: "12px 16px", fontSize: 13, color: C.muted }}>{t.descripcion}</td>
@@ -1767,25 +1796,14 @@ export default function Dashboard() {
                       </tr></thead>
                       <tbody>
                         {txTransf.map(t => {
-                          const isEditingT = editingTxId === t.id;
-                          if (isEditingT) return (
-                            <tr key={t.id} style={{ borderBottom: `1px solid ${C.border}`, background: "#f0f7ff" }}>
-                              <td style={{ padding: "8px 10px" }}><input type="date" value={editingTxData.fecha} onChange={e => setEditingTxData(d => ({ ...d, fecha: e.target.value }))} style={{ fontSize: 12, padding: "4px 6px", width: 130 }} /></td>
-                              <td style={{ padding: "8px 10px" }}><span style={{ background: "#e8f0fe", color: C.sky, borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>{t.categoria === "Pago tarjeta" ? "Pago tarjeta" : "Transferencia"}</span></td>
-                              <td style={{ padding: "8px 10px" }}><input value={editingTxData.descripcion} onChange={e => setEditingTxData(d => ({ ...d, descripcion: e.target.value }))} style={{ fontSize: 12, padding: "4px 6px", width: 180 }} /></td>
-                              <td style={{ padding: "8px 10px" }}><select value={editingTxData.cuenta} onChange={e => setEditingTxData(d => ({ ...d, cuenta: e.target.value }))} style={{ fontSize: 12, padding: "4px 6px" }}>{[...cuentas.map(c => c.nombre), ...CUENTAS_LIST].filter((v,i,a)=>a.indexOf(v)===i).map(c => <option key={c}>{c}</option>)}</select></td>
-                              <td style={{ padding: "8px 10px" }}><input type="number" value={editingTxData.monto} onChange={e => setEditingTxData(d => ({ ...d, monto: e.target.value }))} style={{ fontSize: 12, padding: "4px 6px", width: 90 }} /></td>
-                              <td style={{ padding: "8px 10px", display: "flex", gap: 4 }}>
-                                <button onClick={handleSaveTxEdit} className="icon-btn" style={{ color: C.sage }}><Check size={14}/></button>
-                                <button onClick={() => setEditingTxId(null)} className="icon-btn"><X size={14}/></button>
-                              </td>
-                            </tr>
-                          );
-                          const startEditTransf = () => { setEditingTxId(t.id); setEditingTxData({ fecha: t.fecha, categoria: t.categoria, descripcion: t.descripcion, cuenta: t.cuenta, monto: t.monto, impacta_presupuesto: t.impacta_presupuesto }); };
+                          const openEditT = () => { setEditingTxId(t.id); setEditingTxData({ fecha: t.fecha, categoria: t.categoria, descripcion: t.descripcion, cuenta: t.cuenta, monto: t.monto, impacta_presupuesto: t.impacta_presupuesto, tipo: t.tipo }); setShowEditModal(true); };
                           return (
-                            <tr key={t.id} className="row-hover" style={{ borderBottom: `1px solid ${C.border}`, cursor: "pointer" }} onClick={startEditTransf}>
-                              <td style={{ padding: "12px 16px", fontSize: 13, color: C.muted, whiteSpace: "nowrap" }}>
-                                {new Date(t.fecha + "T12:00:00").toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "2-digit" })}
+                            <tr key={t.id} className="row-hover" style={{ borderBottom: `1px solid ${C.border}`, cursor: "pointer" }} onClick={openEditT}>
+                              <td style={{ padding: "12px 16px", fontSize: 13, color: C.muted, whiteSpace: "nowrap" }} onClick={e => { e.stopPropagation(); setEditingDateTxId(t.id); setEditingDateVal(t.fecha); }}>
+                                {editingDateTxId === t.id
+                                  ? <input type="date" value={editingDateVal} onChange={e => setEditingDateVal(e.target.value)} autoFocus onClick={e => e.stopPropagation()} onBlur={async () => { if (editingDateVal && editingDateVal !== t.fecha) { saving("Guardando fecha…"); try { await atUpdate("Transacciones", t.id, { fecha: editingDateVal }); setTransacciones(prev => prev.map(tx => tx.id !== t.id ? tx : { ...tx, fecha: editingDateVal })); saved(); } catch(ex) { errAt(ex); } } setEditingDateTxId(null); }} style={{ fontSize: 12, padding: "3px 6px", width: 128 }} />
+                                  : <span style={{ borderBottom: `1px dashed ${C.border}`, paddingBottom: 1, cursor: "text" }}>{new Date(t.fecha + "T12:00:00").toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "2-digit" })}</span>
+                                }
                               </td>
                               <td style={{ padding: "12px 16px" }}>
                                 <span style={{ background: "#e8f0fe", color: C.sky, borderRadius: 6, padding: "2px 10px", fontSize: 11, fontWeight: 700 }}>
@@ -1939,13 +1957,14 @@ export default function Dashboard() {
               </div>
             </div>
             <div style={{ ...S.card, padding: 22 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
                 <h3 style={{ fontSize: 14, fontWeight: 800 }}>Gastos fijos</h3>
                 <div style={{ display: "flex", gap: 10 }}>
                   <span style={{ fontSize: 12, color: C.sage, fontWeight: 700 }}>✓ {fmt(gastosFijosConEstado.filter(g => g.pagado).reduce((s, g) => s + g.monto, 0))}</span>
                   <span style={{ fontSize: 12, color: C.muted, fontWeight: 700 }}>○ {fmt(gastosFijosConEstado.filter(g => !g.pagado).reduce((s, g) => s + g.monto, 0))}</span>
                 </div>
               </div>
+              <p style={{ fontSize: 10, color: C.soft, marginBottom: 10 }}>Verde cuando el gasto acumulado de esa categoría cubre el monto fijo. Eliminar un gasto fijo solo borra el recordatorio, no afecta las transacciones.</p>
               <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 280, overflowY: "auto" }}>
                 {gastosFijosConEstado.length === 0 && <p style={{ color: C.muted, fontSize: 13, textAlign: "center", padding: "20px 0" }}>Agrega gastos fijos ↑</p>}
                 {gastosFijosConEstado.map(gf => (
@@ -2338,6 +2357,46 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* ── MODAL EDITAR TRANSACCIÓN ── */}
+      {showEditModal && editingTxId && (
+        <div onClick={() => { setShowEditModal(false); setEditingTxId(null); }} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1150, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <div onClick={e => e.stopPropagation()} className="fade" style={{ ...S.card, padding: 28, width: "min(500px,95vw)", boxShadow: "0 16px 48px rgba(0,0,0,0.22)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 12, background: editingTxData.tipo === "ingreso" ? C.honeydew : "#fce8e8", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>{editingTxData.tipo === "ingreso" ? "💰" : "💸"}</div>
+                <h3 style={{ fontSize: 16, fontWeight: 900 }}>Editar {editingTxData.tipo === "ingreso" ? "ingreso" : "gasto"}</h3>
+              </div>
+              <button onClick={() => { setShowEditModal(false); setEditingTxId(null); }} style={{ background: "none", border: "none", cursor: "pointer", color: C.muted, fontSize: 22, lineHeight: 1, padding: 4 }}>×</button>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div><label style={S.lbl}>Monto (MXN)</label><input type="number" value={editingTxData.monto} onChange={e => setEditingTxData(d => ({ ...d, monto: e.target.value }))} autoFocus /></div>
+              <div><label style={S.lbl}>Fecha</label><input type="date" value={editingTxData.fecha} onChange={e => setEditingTxData(d => ({ ...d, fecha: e.target.value }))} /></div>
+              <div><label style={S.lbl}>Categoría</label>
+                <select value={editingTxData.categoria} onChange={e => setEditingTxData(d => ({ ...d, categoria: e.target.value }))}>
+                  {(editingTxData.tipo === "ingreso" ? catsIngreso : catsGasto).map(c => <option key={c}>{c}</option>)}
+                </select></div>
+              <div><label style={S.lbl}>Cuenta</label>
+                <select value={editingTxData.cuenta} onChange={e => setEditingTxData(d => ({ ...d, cuenta: e.target.value }))}>
+                  {[...cuentas.map(c => c.nombre), ...tarjetas.map(t => t.nombre)].filter((v,i,a)=>a.indexOf(v)===i).map(c => <option key={c}>{c}</option>)}
+                </select></div>
+              <div style={{ gridColumn: "1/-1" }}><label style={S.lbl}>Descripción</label><input value={editingTxData.descripcion} onChange={e => setEditingTxData(d => ({ ...d, descripcion: e.target.value }))} /></div>
+              <div style={{ gridColumn: "1/-1", display: "flex", alignItems: "center", justifyContent: "space-between", background: C.bg, borderRadius: 10, padding: "10px 14px" }}>
+                <div><p style={{ fontSize: 13, fontWeight: 700 }}>Impacta presupuesto</p></div>
+                <button onClick={() => setEditingTxData(d => ({ ...d, impacta_presupuesto: !d.impacta_presupuesto }))}
+                  style={{ width: 42, height: 24, borderRadius: 99, border: "none", cursor: "pointer", background: editingTxData.impacta_presupuesto ? C.sage : C.border, transition: "background 0.2s", position: "relative" }}>
+                  <div style={{ width: 18, height: 18, borderRadius: "50%", background: "white", position: "absolute", top: 3, left: editingTxData.impacta_presupuesto ? 21 : 3, transition: "left 0.2s", boxShadow: "0 1px 4px rgba(0,0,0,0.2)" }} />
+                </button>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+              <button style={{ ...S.btnPrimary, flex: 1, justifyContent: "center" }} onClick={handleSaveEditModal}>Guardar cambios</button>
+              <button onClick={() => { setShowEditModal(false); setEditingTxId(null); handleDeleteTx(editingTxId); }} style={{ ...S.btnSec, color: C.rose, borderColor: C.rose }}>Eliminar</button>
+              <button style={S.btnSec} onClick={() => { setShowEditModal(false); setEditingTxId(null); }}>Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── FABs circulares — inferior izquierda ── */}
       <div style={{ position: "fixed", bottom: 24, left: 24, display: "flex", flexDirection: "row", gap: 10, zIndex: 999 }}>
         <button title="Nuevo ingreso"
@@ -2469,8 +2528,16 @@ export default function Dashboard() {
                   return null;
                 })()}
               </div>
-              <div><label style={S.lbl}>Fecha</label>
-                <input type="date" value={form.fecha} onChange={e => setForm({ ...form, fecha: e.target.value })} /></div>
+              <div>
+                <label style={S.lbl}>Fecha</label>
+                <div style={{ display: "flex", gap: 5, marginBottom: 5 }}>
+                  {(() => { const hoy = localDate(); const ayer = (() => { const d = new Date(); d.setDate(d.getDate()-1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })(); return (<>
+                    <button type="button" onClick={() => setForm(f => ({ ...f, fecha: hoy }))} style={{ ...S.btnSec, padding: "2px 10px", fontSize: 11, fontWeight: 700, color: form.fecha === hoy ? C.sage : C.muted, borderColor: form.fecha === hoy ? C.sage : C.border, borderRadius: 7, flex: 1 }}>Hoy</button>
+                    <button type="button" onClick={() => setForm(f => ({ ...f, fecha: ayer }))} style={{ ...S.btnSec, padding: "2px 10px", fontSize: 11, fontWeight: 700, color: form.fecha === ayer ? C.sage : C.muted, borderColor: form.fecha === ayer ? C.sage : C.border, borderRadius: 7, flex: 1 }}>Ayer</button>
+                  </>); })()}
+                </div>
+                <input type="date" value={form.fecha} onChange={e => setForm({ ...form, fecha: e.target.value })} />
+              </div>
               <div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
                   <label style={S.lbl}>Categoría</label>

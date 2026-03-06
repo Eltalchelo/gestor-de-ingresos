@@ -1,3 +1,6 @@
+# Claude Code internal config
+.claude/
+
 # Environment variables
 .env
 .env.*
