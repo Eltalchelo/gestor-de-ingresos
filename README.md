@@ -6,15 +6,31 @@ Dashboard personal de finanzas construido con **React + Vite**, sincronizado en 
 
 ## Funcionalidades
 
-- 📊 Dashboard con resumen de ingresos, gastos y saldo total
-- 💳 Cuentas — saldos en tiempo real, múltiples cuentas (Efectivo, Nu, Uala, etc.)
-- 🔄 Transferencias entre cuentas
-- 🎯 Metas de ahorro con progreso visual
-- 📅 Presupuesto por período (semanal, quincenal, mensual, bimestral)
-- 📈 Gráfica Ingresos vs Gastos por día
-- 🗓️ Constancia de registro estilo heatmap de GitHub
-- 🔍 Filtros por tipo, cuenta, categoría, fecha y búsqueda de texto
-- ✏️ Edición y eliminación de transacciones desde la tabla
+**Todo lo que necesitas. Nada que no necesitas.**
+
+### 📊 Tu dinero, de un vistazo
+Ve exactamente cuánto entra, cuánto sale y cuánto tienes — en tiempo real, sin hojas de cálculo, sin complicaciones.
+
+### 💳 Todas tus cuentas en un solo lugar
+Efectivo, Nu, Uala, Mercado Libre, DiDi — cada cuenta con su saldo actualizado al instante cada vez que registras un movimiento.
+
+### 📈 Entiende tus patrones de gasto
+Una gráfica de Ingresos vs Gastos por día te muestra exactamente cuándo gastas más y cuándo más ingresa. Diseñada para México — sin errores de zona horaria.
+
+### 🎯 Metas que sí se cumplen
+Define una meta, ponle un emoji, y observa cómo el progreso avanza con cada ahorro registrado. Simple. Visual. Motivador.
+
+### 📅 Presupuesto que se adapta a ti
+Semanal, quincenal, mensual o bimestral — tú decides el período. El sistema calcula automáticamente cuánto has usado y cuánto te queda.
+
+### 🗓️ Constancia hecha visible
+Un heatmap estilo GitHub que muestra los días en que registraste movimientos. Ver tu racha activa es razón suficiente para no romperla.
+
+### 🔍 Encuentra cualquier transacción en segundos
+Filtra por tipo, cuenta, categoría o fecha. O simplemente escribe lo que buscas — el buscador encuentra hasta lo que no recordabas haber registrado.
+
+### ✏️ Control total sobre tus datos
+Edita o elimina cualquier transacción directo desde la tabla. Sin modales innecesarios, sin pasos extra.
 
 ## Instalación
 
