@@ -9,28 +9,28 @@ Dashboard personal de finanzas construido con **React + Vite**, sincronizado en 
 **Todo lo que necesitas. Nada que no necesitas.**
 
 ### 📊 Tu dinero, de un vistazo
-Ve exactamente cuánto entra, cuánto sale y cuánto tienes — en tiempo real, sin hojas de cálculo, sin complicaciones.
+¿Cuánto tienes realmente? No en teoría — ahora mismo. El dashboard consolida cada peso de todas tus cuentas en un número claro, actualizado al instante con cada movimiento que registras. Sin fórmulas. Sin hojas de cálculo. Solo la verdad de tus finanzas en pantalla.
 
-### 💳 Todas tus cuentas en un solo lugar
-Efectivo, Nu, Uala, Mercado Libre, DiDi — cada cuenta con su saldo actualizado al instante cada vez que registras un movimiento.
+### 💳 Todas tus cuentas, un solo lugar
+Efectivo, Nu, Uala, Mercado Libre, DiDi, Story — cada cuenta con su saldo propio, actualizado automáticamente cada vez que registras un ingreso o un gasto. Haz una transferencia entre cuentas y ambos saldos se ajustan en el momento. Tu dinero, siempre donde debe estar.
 
-### 📈 Entiende tus patrones de gasto
-Una gráfica de Ingresos vs Gastos por día te muestra exactamente cuándo gastas más y cuándo más ingresa. Diseñada para México — sin errores de zona horaria.
+### 📈 Entiende cuándo y cómo gastas
+Una gráfica de Ingresos vs Gastos por día transforma tus movimientos en una historia visual. Ve de un solo vistazo en qué días del mes gastas más, cuándo entra más dinero, y qué tan cerca estás del balance ideal. Construida para México — sin los errores de zona horaria que hacen que las transacciones nocturnas aparezcan en el día equivocado.
 
-### 🎯 Metas que sí se cumplen
-Define una meta, ponle un emoji, y observa cómo el progreso avanza con cada ahorro registrado. Simple. Visual. Motivador.
+### 🎯 Metas que avanzan solas
+Crea una meta de ahorro, asígnale un nombre, un emoji y un objetivo. Cada vez que muevas dinero hacia ella, el progreso se actualiza y la barra avanza. Verlo moverse es motivación suficiente para seguir. Porque las metas que no se miden, no se cumplen.
 
-### 📅 Presupuesto que se adapta a ti
-Semanal, quincenal, mensual o bimestral — tú decides el período. El sistema calcula automáticamente cuánto has usado y cuánto te queda.
+### 📅 Un presupuesto que trabaja contigo
+Semanal, quincenal, mensual o bimestral — el período que mejor se adapte a cómo recibes tu dinero. Define cuánto puedes gastar, y el sistema lleva la cuenta por ti: cuánto has usado, cuánto queda, y si vas bien o ya te pasaste. Sin sorpresas a fin de mes.
 
-### 🗓️ Constancia hecha visible
-Un heatmap estilo GitHub que muestra los días en que registraste movimientos. Ver tu racha activa es razón suficiente para no romperla.
+### 🗓️ La constancia que no se puede fingir
+Un heatmap estilo GitHub marca cada día en que registraste movimientos. Verde significa que estuviste al tanto. Gris significa que no. No hay trampa posible — o llevas el registro o no lo llevas. Esa visibilidad, por sí sola, cambia el hábito.
 
-### 🔍 Encuentra cualquier transacción en segundos
-Filtra por tipo, cuenta, categoría o fecha. O simplemente escribe lo que buscas — el buscador encuentra hasta lo que no recordabas haber registrado.
+### 🔍 Cualquier transacción, en segundos
+Busca por descripción, filtra por cuenta, por categoría, por tipo o por rango de fechas. Combina filtros. Ordena como quieras. Lo que tardabas minutos en encontrar en un estado de cuenta, aquí aparece al instante. Tu historial financiero, siempre a la mano.
 
-### ✏️ Control total sobre tus datos
-Edita o elimina cualquier transacción directo desde la tabla. Sin modales innecesarios, sin pasos extra.
+### ✏️ Tus datos, bajo tu control
+Cometiste un error en el monto, la categoría o la fecha de una transacción. Sin problema — edítala directo desde la tabla con un clic. ¿Ya no la necesitas? Elimínala. Sin pasos extra, sin confirmaciones innecesarias. Porque tus datos deben obedecerte a ti, no al revés.
 
 ## Instalación
 
