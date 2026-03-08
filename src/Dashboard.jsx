@@ -564,7 +564,10 @@ export default function Dashboard() {
   const [editingDateTxId, setEditingDateTxId] = useState(null);
   const [editingDateVal, setEditingDateVal] = useState("");
   const [lineChartCat, setLineChartCat] = useState("todas");
+  const [lineChartTipo, setLineChartTipo] = useState("todos");
+  const [lineChartCuenta, setLineChartCuenta] = useState("todas");
   const [showEditModal, setShowEditModal] = useState(false);
+  const [inlineEdit, setInlineEdit] = useState({ txId: null, field: null, val: "" });
 
   // ── FILTROS PERSISTENTES ─────────────────────────────────────
   useEffect(() => {
@@ -594,6 +597,7 @@ export default function Dashboard() {
         setShowPagoForm(false);
         setFormError("");
         setTransfError("");
+        setInlineEdit({ txId: null, field: null, val: "" });
       }
     };
     window.addEventListener("keydown", handler);
@@ -641,13 +645,24 @@ export default function Dashboard() {
     transacciones.forEach(t => {
       if (t.fecha >= presupuesto.fechaInicio && t.fecha <= presupuesto.fechaFin) {
         if (lineChartCat !== "todas" && t.categoria !== lineChartCat) return;
+        if (lineChartTipo !== "todos" && t.tipo !== lineChartTipo) return;
+        if (lineChartCuenta !== "todas" && t.cuenta !== lineChartCuenta) return;
         if (!map[t.fecha]) map[t.fecha] = { dia: t.fecha.slice(5), ingresos: 0, gastos: 0 };
         if (t.tipo === "ingreso") map[t.fecha].ingresos += t.monto;
         else if (t.categoria !== "Transferencia") map[t.fecha].gastos += t.monto;
       }
     });
     return Object.values(map).sort((a, b) => a.dia.localeCompare(b.dia));
-  }, [transacciones, presupuesto, lineChartCat]);
+  }, [transacciones, presupuesto, lineChartCat, lineChartTipo, lineChartCuenta]);
+
+  const mostUsedCuenta = useMemo(() => {
+    const freq = {};
+    transacciones.forEach(t => { if (t.cuenta) freq[t.cuenta] = (freq[t.cuenta] || 0) + 1; });
+    const sorted = Object.entries(freq).sort((a, b) => b[1] - a[1]);
+    const existing = new Set([...cuentas.map(c => c.nombre), ...tarjetas.map(t => t.nombre)]);
+    const top = sorted.find(([name]) => existing.has(name));
+    return top?.[0] || cuentas[0]?.nombre || "";
+  }, [transacciones, cuentas, tarjetas]);
 
   // Transacciones filtradas
   const cuentasEnTransacciones = useMemo(() => [...new Set(transacciones.map(t => t.cuenta))], [transacciones]);
@@ -793,6 +808,21 @@ export default function Dashboard() {
     } catch(e) { errAt(e); }
   };
 
+  const saveInlineEdit = async (txId, field, val) => {
+    const tx = transacciones.find(t => t.id === txId);
+    setInlineEdit({ txId: null, field: null, val: "" });
+    if (!tx) return;
+    let parsed = val;
+    if (field === "monto") parsed = parseFloat(val) || 0;
+    if (String(parsed) === String(tx[field])) return;
+    saving("Guardando…");
+    try {
+      await atUpdate("Transacciones", txId, { [field]: parsed });
+      setTransacciones(prev => prev.map(t => t.id !== txId ? t : { ...t, [field]: parsed }));
+      saved();
+    } catch(e) { errAt(e); }
+  };
+
   const handleSaveTxEdit = async () => {
     if (!editingTxId) return;
     saving("Guardando cambios…");
@@ -813,7 +843,6 @@ export default function Dashboard() {
   };
 
   const handleDeleteTx = async (id) => {
-    if (!window.confirm("¿Eliminar esta transacción? Esta acción no se puede deshacer.")) return;
     saving("Eliminando…");
     try {
       // ── Revertir saldo al eliminar ──
@@ -1385,7 +1414,7 @@ export default function Dashboard() {
                     {tarjetas.map(t => {
                       const p = pct(t.deuda, t.limite);
                       return (
-                        <div key={t.id} style={{ padding: "10px 12px", borderRadius: 12, background: C.bg }}>
+                        <div key={t.id} onClick={() => setActiveTab("cuentas")} style={{ padding: "10px 12px", borderRadius: 12, background: C.bg, cursor: "pointer", transition: "opacity 0.15s" }} onMouseEnter={e=>e.currentTarget.style.opacity="0.75"} onMouseLeave={e=>e.currentTarget.style.opacity="1"}>
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
                             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                               <span style={{ fontSize: 13, fontWeight: 700 }}>{t.nombre}</span>
@@ -1421,8 +1450,8 @@ export default function Dashboard() {
                 </div>
               </div>
               {pieData.length === 0 ? <div style={{ height: 200, display: "flex", alignItems: "center", justifyContent: "center", color: C.muted }}>Sin datos</div> : (
-                <div style={{ position: "relative" }}>
-                  <ResponsiveContainer width="100%" height={260}>
+                <>
+                  <ResponsiveContainer width="100%" height={240}>
                     <PieChart>
                       <Pie data={pieData} cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={3} dataKey="value"
                         style={{ cursor: "pointer" }}
@@ -1432,11 +1461,21 @@ export default function Dashboard() {
                       <Tooltip content={<CustomPieTooltip />} />
                     </PieChart>
                   </ResponsiveContainer>
-                  <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", textAlign: "center", pointerEvents: "none" }}>
-                    <p style={{ fontSize: 15, fontWeight: 900, letterSpacing: -0.5, color: tabPie === "gasto" ? C.rose : C.sage }}>{fmt(pieData.reduce((s, d) => s + d.value, 0))}</p>
-                    <p style={{ fontSize: 9, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>total</p>
+                  <div style={{ display: "flex", gap: 20, justifyContent: "center", paddingTop: 8, borderTop: `1px solid ${C.border}` }}>
+                    <div style={{ textAlign: "center" }}>
+                      <p style={{ fontSize: 15, fontWeight: 900, color: tabPie === "gasto" ? C.rose : C.sage }}>
+                        {tabPie === "gasto" ? fmt(Math.max(presupuesto.total - pieData.reduce((s,d)=>s+d.value,0), 0)) : fmt(pieData.reduce((s,d)=>s+d.value,0))}
+                      </p>
+                      <p style={{ fontSize: 9, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>{tabPie === "gasto" ? "disponible" : "total"}</p>
+                    </div>
+                    <div style={{ textAlign: "center" }}>
+                      <p style={{ fontSize: 15, fontWeight: 900, color: tabPie === "gasto" ? C.rose : C.sage }}>
+                        {tabPie === "gasto" ? Math.max(100 - pct(pieData.reduce((s,d)=>s+d.value,0), presupuesto.total), 0).toFixed(0) : pct(pieData.reduce((s,d)=>s+d.value,0), presupuesto.total).toFixed(0)}%
+                      </p>
+                      <p style={{ fontSize: 9, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>{tabPie === "gasto" ? "libre" : "del pres."}</p>
+                    </div>
                   </div>
-                </div>
+                </>
               )}
             </div>
           </div>
@@ -1496,10 +1535,19 @@ export default function Dashboard() {
               <h3 style={{ fontSize: 14, fontWeight: 800 }}>Ingresos vs Gastos por día</h3>
               <p style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{fmtFecha(presupuesto.fechaInicio)} – {fmtFecha(presupuesto.fechaFin)}</p>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <select value={lineChartTipo} onChange={e => setLineChartTipo(e.target.value)} className="filter-select" style={{ fontSize: 12, padding: "5px 10px" }}>
+                <option value="todos">Ingresos y gastos</option>
+                <option value="ingreso">Solo ingresos</option>
+                <option value="gasto">Solo gastos</option>
+              </select>
               <select value={lineChartCat} onChange={e => setLineChartCat(e.target.value)} className="filter-select" style={{ fontSize: 12, padding: "5px 10px" }}>
                 <option value="todas">Todas las categorías</option>
                 {[...new Set(transacciones.filter(t => t.fecha >= presupuesto.fechaInicio && t.fecha <= presupuesto.fechaFin).map(t => t.categoria))].sort().map(c => <option key={c}>{c}</option>)}
+              </select>
+              <select value={lineChartCuenta} onChange={e => setLineChartCuenta(e.target.value)} className="filter-select" style={{ fontSize: 12, padding: "5px 10px" }}>
+                <option value="todas">Todas las cuentas</option>
+                {[...new Set(transacciones.filter(t => t.fecha >= presupuesto.fechaInicio && t.fecha <= presupuesto.fechaFin).map(t => t.cuenta))].sort().map(c => <option key={c}>{c}</option>)}
               </select>
               <div style={{ display: "flex", gap: 16 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}><div style={{ width: 12, height: 3, borderRadius: 2, background: C.sage }} /><span style={{ fontSize: 12, color: C.muted }}>Ingresos</span></div>
@@ -1722,7 +1770,7 @@ export default function Dashboard() {
                     <th key={h} style={{ padding: "10px 16px", textAlign: "left", fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, whiteSpace: "nowrap" }}>{h}</th>
                   ))}
                 </tr>
-                <tr><td colSpan={8} style={{ padding: "4px 16px 6px", fontSize: 10, color: C.soft, fontStyle: "italic" }}>Toca la fecha para editarla · toca la fila para editar todos los campos</td></tr></thead>
+                <tr><td colSpan={8} style={{ padding: "4px 16px 6px", fontSize: 10, color: C.soft, fontStyle: "italic" }}>Toca cualquier campo para editarlo · toca la fila para el formulario completo</td></tr></thead>
                 <tbody>
                   {txFiltradas.map(t => {
                     const openEdit = () => { setEditingTxId(t.id); setEditingTxData({ fecha: t.fecha, categoria: t.categoria, descripcion: t.descripcion, cuenta: t.cuenta, monto: t.monto, impacta_presupuesto: t.impacta_presupuesto, tipo: t.tipo }); setShowEditModal(true); };
@@ -1735,13 +1783,35 @@ export default function Dashboard() {
                           }
                         </td>
                         <td style={{ padding: "12px 16px" }}><span style={{ background: t.tipo === "ingreso" ? C.honeydew : "#fce8e8", color: t.tipo === "ingreso" ? C.sage : C.rose, borderRadius: 6, padding: "2px 10px", fontSize: 11, fontWeight: 700 }}>{t.tipo === "ingreso" ? "Ingreso" : "Gasto"}</span></td>
-                        <td style={{ padding: "12px 16px", fontSize: 13, fontWeight: 600 }}>{t.categoria}</td>
-                        <td style={{ padding: "12px 16px", fontSize: 13, color: C.muted }}>{t.descripcion}</td>
-                        <td style={{ padding: "12px 16px", fontSize: 13 }}>{CUENTA_ICONS[t.cuenta] || "💳"} {t.cuenta}</td>
-                        <td style={{ padding: "12px 16px", fontSize: 14, fontWeight: 800 }}>
-                          <span style={{ color: t.tipo === "ingreso" ? C.sage : C.rose }}>{t.tipo === "ingreso" ? "+" : "-"}{fmt(t.monto)}</span>
+                        <td style={{ padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: "text" }} onClick={e => { e.stopPropagation(); setInlineEdit({ txId: t.id, field: "categoria", val: t.categoria }); }}>
+                          {inlineEdit.txId === t.id && inlineEdit.field === "categoria"
+                            ? <select value={inlineEdit.val} autoFocus onClick={e => e.stopPropagation()} onChange={e => setInlineEdit(s => ({ ...s, val: e.target.value }))} onBlur={() => saveInlineEdit(t.id, "categoria", inlineEdit.val)} style={{ fontSize: 12, padding: "3px 6px" }}>
+                                {(t.tipo === "ingreso" ? catsIngreso : catsGasto).map(c => <option key={c}>{c}</option>)}
+                              </select>
+                            : <span style={{ borderBottom: `1px dashed ${C.border}`, paddingBottom: 1 }}>{t.categoria}</span>
+                          }
                         </td>
-                        <td style={{ padding: "12px 16px" }}>
+                        <td style={{ padding: "8px 16px", fontSize: 13, color: C.muted, cursor: "text" }} onClick={e => { e.stopPropagation(); setInlineEdit({ txId: t.id, field: "descripcion", val: t.descripcion }); }}>
+                          {inlineEdit.txId === t.id && inlineEdit.field === "descripcion"
+                            ? <input value={inlineEdit.val} autoFocus onClick={e => e.stopPropagation()} onChange={e => setInlineEdit(s => ({ ...s, val: e.target.value }))} onBlur={() => saveInlineEdit(t.id, "descripcion", inlineEdit.val)} style={{ fontSize: 12, padding: "3px 6px" }} />
+                            : <span style={{ borderBottom: `1px dashed ${C.border}`, paddingBottom: 1 }}>{t.descripcion || <em style={{ opacity: 0.4 }}>—</em>}</span>
+                          }
+                        </td>
+                        <td style={{ padding: "8px 16px", fontSize: 13, cursor: "text" }} onClick={e => { e.stopPropagation(); setInlineEdit({ txId: t.id, field: "cuenta", val: t.cuenta }); }}>
+                          {inlineEdit.txId === t.id && inlineEdit.field === "cuenta"
+                            ? <select value={inlineEdit.val} autoFocus onClick={e => e.stopPropagation()} onChange={e => setInlineEdit(s => ({ ...s, val: e.target.value }))} onBlur={() => saveInlineEdit(t.id, "cuenta", inlineEdit.val)} style={{ fontSize: 12, padding: "3px 6px" }}>
+                                {[...cuentas.map(c => c.nombre), ...tarjetas.map(tj => tj.nombre)].filter((v,i,a)=>a.indexOf(v)===i).map(c => <option key={c}>{c}</option>)}
+                              </select>
+                            : <span style={{ borderBottom: `1px dashed ${C.border}`, paddingBottom: 1 }}>{CUENTA_ICONS[t.cuenta] || "💳"} {t.cuenta}</span>
+                          }
+                        </td>
+                        <td style={{ padding: "8px 16px", fontSize: 14, fontWeight: 800, cursor: "text" }} onClick={e => { e.stopPropagation(); setInlineEdit({ txId: t.id, field: "monto", val: String(t.monto) }); }}>
+                          {inlineEdit.txId === t.id && inlineEdit.field === "monto"
+                            ? <input type="number" value={inlineEdit.val} autoFocus onClick={e => e.stopPropagation()} onChange={e => setInlineEdit(s => ({ ...s, val: e.target.value }))} onBlur={() => saveInlineEdit(t.id, "monto", inlineEdit.val)} style={{ fontSize: 13, padding: "3px 6px", width: 90 }} />
+                            : <span style={{ color: t.tipo === "ingreso" ? C.sage : C.rose, borderBottom: `1px dashed ${C.border}`, paddingBottom: 1 }}>{t.tipo === "ingreso" ? "+" : "-"}{fmt(t.monto)}</span>
+                          }
+                        </td>
+                        <td style={{ padding: "8px 16px", cursor: "pointer" }} onClick={async e => { e.stopPropagation(); const newVal = !t.impacta_presupuesto; saving("Guardando…"); try { await atUpdate("Transacciones", t.id, { impacta_presupuesto: newVal }); setTransacciones(prev => prev.map(tx => tx.id !== t.id ? tx : { ...tx, impacta_presupuesto: newVal })); saved(); } catch(ex) { errAt(ex); } }}>
                           {t.impacta_presupuesto
                             ? <span style={{ fontSize: 10, fontWeight: 700, background: C.honeydew, color: C.sage, borderRadius: 6, padding: "2px 7px" }}>✓</span>
                             : <span style={{ fontSize: 10, fontWeight: 700, background: C.bg, color: C.muted, borderRadius: 6, padding: "2px 7px", border: `1px solid ${C.border}` }}>—</span>}
@@ -2400,12 +2470,12 @@ export default function Dashboard() {
       {/* ── FABs circulares — inferior izquierda ── */}
       <div style={{ position: "fixed", bottom: 24, left: 24, display: "flex", flexDirection: "row", gap: 10, zIndex: 999 }}>
         <button title="Nuevo ingreso"
-          onClick={() => { setForm(f => ({ ...f, tipo: "ingreso", categoria: catsIngreso[0] || "Salario", cuenta: f.cuenta || (cuentas[0]?.nombre || "") })); setShowForm(true); }}
+          onClick={() => { setForm(f => ({ ...f, tipo: "ingreso", categoria: catsIngreso[0] || "Salario", cuenta: mostUsedCuenta || f.cuenta || (cuentas[0]?.nombre || "") })); setShowForm(true); }}
           style={{ width: 52, height: 52, borderRadius: "50%", background: C.sage, color: "white", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 16px rgba(0,0,0,0.20)", fontSize: 24, fontWeight: 900, transition: "transform 0.15s" }}
           onMouseEnter={e => e.currentTarget.style.transform="scale(1.1)"}
           onMouseLeave={e => e.currentTarget.style.transform="scale(1)"}>+</button>
         <button title="Nuevo gasto"
-          onClick={() => { setForm(f => ({ ...f, tipo: "gasto", categoria: catsGasto[0] || "Comida", cuenta: f.cuenta || (cuentas[0]?.nombre || "") })); setShowForm(true); }}
+          onClick={() => { setForm(f => ({ ...f, tipo: "gasto", categoria: catsGasto[0] || "Comida", cuenta: mostUsedCuenta || f.cuenta || (cuentas[0]?.nombre || "") })); setShowForm(true); }}
           style={{ width: 52, height: 52, borderRadius: "50%", background: C.rose, color: "white", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 16px rgba(0,0,0,0.20)", fontSize: 24, fontWeight: 900, transition: "transform 0.15s" }}
           onMouseEnter={e => e.currentTarget.style.transform="scale(1.1)"}
           onMouseLeave={e => e.currentTarget.style.transform="scale(1)"}>−</button>
@@ -2419,17 +2489,14 @@ export default function Dashboard() {
       {/* ── MODAL TRANSFERENCIA / PAGO ── */}
       {showTransfForm && (
         <div onClick={() => setShowTransfForm(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1200, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-          <div onClick={e => e.stopPropagation()} className="fade" style={{ ...S.card, padding: 28, width: "min(460px,95vw)", boxShadow: "0 16px 48px rgba(0,0,0,0.22)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <div onClick={e => e.stopPropagation()} className="fade" style={{ ...S.card, padding: 22, width: "min(420px,95vw)", boxShadow: "0 16px 48px rgba(0,0,0,0.22)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <div style={{ width: 36, height: 36, borderRadius: 12, background: C.aliceBlue, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>🔄</div>
-                <h3 style={{ fontSize: 16, fontWeight: 900 }}>Transferencia / Pago</h3>
+                <div style={{ width: 32, height: 32, borderRadius: 10, background: C.aliceBlue, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>🔄</div>
+                <h3 style={{ fontSize: 15, fontWeight: 900 }}>Transferencia / Pago</h3>
               </div>
               <button onClick={() => setShowTransfForm(false)} style={{ background: "none", border: "none", cursor: "pointer", color: C.muted, fontSize: 22, lineHeight: 1, padding: 4 }}>×</button>
             </div>
-            <p style={{ fontSize: 12, color: C.muted, background: C.bg, borderRadius: 10, padding: "8px 12px", marginBottom: 16 }}>
-              💡 Mueve dinero entre cuentas o paga una tarjeta de crédito.
-            </p>
             <div style={{ display: "grid", gap: 12 }}>
               <div>
                 <label style={S.lbl}>Saliente (origen)</label>
@@ -2529,12 +2596,9 @@ export default function Dashboard() {
                 })()}
               </div>
               <div>
-                <label style={S.lbl}>Fecha</label>
-                <div style={{ display: "flex", gap: 5, marginBottom: 5 }}>
-                  {(() => { const hoy = localDate(); const ayer = (() => { const d = new Date(); d.setDate(d.getDate()-1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })(); return (<>
-                    <button type="button" onClick={() => setForm(f => ({ ...f, fecha: hoy }))} style={{ ...S.btnSec, padding: "2px 10px", fontSize: 11, fontWeight: 700, color: form.fecha === hoy ? C.sage : C.muted, borderColor: form.fecha === hoy ? C.sage : C.border, borderRadius: 7, flex: 1 }}>Hoy</button>
-                    <button type="button" onClick={() => setForm(f => ({ ...f, fecha: ayer }))} style={{ ...S.btnSec, padding: "2px 10px", fontSize: 11, fontWeight: 700, color: form.fecha === ayer ? C.sage : C.muted, borderColor: form.fecha === ayer ? C.sage : C.border, borderRadius: 7, flex: 1 }}>Ayer</button>
-                  </>); })()}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <label style={{ ...S.lbl, marginBottom: 0 }}>Fecha</label>
+                  {(() => { const ayer = (() => { const d = new Date(); d.setDate(d.getDate()-1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })(); return form.fecha !== ayer ? <button type="button" onClick={() => setForm(f => ({ ...f, fecha: ayer }))} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: C.muted, fontWeight: 600, padding: 0, fontFamily: "inherit" }}>ayer</button> : null; })()}
                 </div>
                 <input type="date" value={form.fecha} onChange={e => setForm({ ...form, fecha: e.target.value })} />
               </div>
